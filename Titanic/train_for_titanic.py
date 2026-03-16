@@ -7,6 +7,45 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
+def age_group(age):
+	if age <12:
+		return "Child"
+	elif age <18:
+		return "Teenager"
+	elif age <35:
+		return "Young"
+	elif age <60:
+		return "Adult"
+	else:
+		return "Senior"
+	
+def family_size(sib, par):
+	return sib + par + 1
+
+def name_spe(name):
+	if "Mrs." in name:
+		return "Mrs."
+	elif "Master." in name:
+		return "Master."
+	elif "Miss." in name:
+		return "Miss."
+	elif "Mr." in name:
+		return "Mr."
+	elif "Col." in name:
+		return "Col."
+	elif "Dr." in name:
+		return "Dr."
+	elif "Rev." in name:
+		return "Rev."
+	elif "Major." in name:
+		return "Major."
+	elif "Mlle." in name:
+		return "Mlle."
+	elif "Mme." in name:
+		return "Mrs."
+	elif "Sir." in name:
+		return "Sir."
+	
 
 def main() -> None:
 	train_df = pd.read_csv("train.csv")
@@ -14,18 +53,35 @@ def main() -> None:
 
 	y = train_df["Survived"]
 
-	# 忽略 Name，其余列均作为特征。
-	train_features = train_df.drop(columns=["Survived", "Name"])
-	test_features = test_df.drop(columns=["Name"])
+	# ignore name
+	train_features = train_df.drop(columns=["Survived"])
+	test_features = test_df
 
-	# 统一把 Sex 转为 0/1。
+	# mapping sex to 0 and 1
 	sex_mapping = {"male": 0, "female": 1}
 	train_features["Sex"] = train_features["Sex"].map(sex_mapping)
 	test_features["Sex"] = test_features["Sex"].map(sex_mapping)
 
-	# 数值列和类别列分开处理：
-	# - Age/Fare 等数值缺失值用中位数填充
-	# - 类别缺失值用常量填充并做 one-hot
+	# create age group column， doing age feature
+	train_features["AgeGroup"] = train_features["Age"].apply(age_group)
+	test_features["AgeGroup"] = test_features["Age"].apply(age_group)
+    # drop the original age column
+	train_features = train_features.drop(columns=["Age"])
+	test_features = test_features.drop(columns=["Age"])
+	
+    # create family size column, doing sibsp and parch feature
+	train_features["FamilySize"] = train_features.apply(lambda row: family_size(row["SibSp"], row["Parch"]), axis=1)
+	test_features["FamilySize"] = test_features.apply(lambda row: family_size(row["SibSp"], row["Parch"]), axis=1)
+
+    #identify spetial name
+	train_features["NameSpe"] = train_df["Name"].apply(name_spe)
+	test_features["NameSpe"] = test_df["Name"].apply(name_spe)
+	#drop name column
+	train_features = train_features.drop(columns=["Name"])
+	test_features = test_features.drop(columns=["Name"])
+
+
+	# identify numeric and categorical features
 	numeric_features = train_features.select_dtypes(include=["number"]).columns.tolist()
 	categorical_features = train_features.select_dtypes(exclude=["number"]).columns.tolist()
 
@@ -75,6 +131,9 @@ def main() -> None:
 	valid_pred = clf.predict(X_valid)
 	accuracy = accuracy_score(y_valid, valid_pred)
 	print(f"Validation Accuracy: {accuracy * 100:.2f}%")
+
+	# Refit with full training data before generating test predictions.
+	clf.fit(train_features, y)
 
 	test_pred = clf.predict(test_features)
 	submission = pd.DataFrame(
